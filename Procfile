@@ -1,0 +1,1 @@
+worker: python cur_web_3_bot.py
