@@ -76,106 +76,106 @@ class StorageHandler:
         return result
 
 
+if __name__ == "__main__":
+    token_env_var = 'COURSERA_PY_WEB_3_LOCATION_BOT_TOKEN'
+    bot_token = os.getenv(token_env_var)
+    if not bot_token:
+        print(f"ENV VAR {token_env_var} is not set")
+        exit(-1)
 
-token_env_var = 'COURSERA_PY_WEB_3_LOCATION_BOT_TOKEN'
-bot_token = os.getenv(token_env_var)
-if not bot_token:
-    print(f"ENV VAR {token_env_var} is not set")
-    exit(-1)
+    bot = telebot.TeleBot(bot_token)
+    state = StateHandler()
 
-bot = telebot.TeleBot(bot_token)
-state = StateHandler()
+    storage = StorageHandler()
 
-storage = StorageHandler()
+    start_str = "Location bot, базовый вариант. Добавление мест в 2 этапа - название, потом геолокация.\n""/help  - напечатать подсказки\n"
 
-start_str = "Location bot, базовый вариант. Добавление мест в 2 этапа - название, потом геолокация.\n""/help  - напечатать подсказки\n"
-
-@bot.message_handler(commands=['start'])
-def start(message):
-    # print("ID: ", message.chat.id)
-    state.set_next_state(message, StateHandler.ADD_START)
-    bot.send_message(chat_id=message.chat.id, text=start_str)
-
-@bot.message_handler(commands=['help'])
-def show_help(message):
-    bot.send_message(chat_id=message.chat.id, text=start_str +
-                     "/start - начать работу\n"
-                     "/add – добавление нового места\n"
-                     "Для ввода местоположения на смартфоне нужно\nнажать вложение к сообщению,\n"
-                     "далее Геопозиция и выбор конкретного места на карте\n"
-                     "/list – отображение добавленных мест\n"
-                     "/reset позволяет пользователю удалить все его добавленные локации(помним про GDPR)\n\n" +
-                     f"Cостояние бота в общении с Вами: {state.get_state_text(message)}\n"
-                     )
-
-# / add – добавление нового места;
-@bot.message_handler(commands=['add'])
-def add_0(message):
-    bot.send_message(chat_id=message.chat.id, text="Введите название места:")
-    state.set_next_state(message)
-    # print("next state:", state.get_state(message))
-    return
-
-@bot.message_handler(func=lambda message: state.get_state(message) == StateHandler.ADD_TITLE,
-                     content_types=['text'])
-def add_1(message):
-    # print("Title:", message.text)
-    title = storage.push_title(message)
-    bot.send_message(chat_id=message.chat.id, text=f"Введите координаты места {title}")
-    state.set_next_state(message)
-    # print("next state:", state.get_state(message))
-    return
-
-@bot.message_handler(func=lambda message: state.get_state(message) == StateHandler.ADD_ADDRESS,
-                     content_types=['location'])
-def add_2(message):
-    # print("coordinates:", message.location)
-    loc = storage.push_location(message)
-    if loc is not None:
-        bot.send_message(chat_id=message.chat.id, text=f"{StorageHandler.decode_db_str(loc)} добавлено!")
-        state.set_next_state(message)
+    @bot.message_handler(commands=['start'])
+    def start(message):
+        # print("ID: ", message.chat.id)
+        state.set_next_state(message, StateHandler.ADD_START)
         bot.send_message(chat_id=message.chat.id, text=start_str)
-    else:
-        bot.send_message(chat_id=message.chat.id, text="Невалидные координаты. Введите координаты места:")
-    # print("next state:", state.get_state(message))
-    return
 
-# /list – отображение добавленных мест;
-@bot.message_handler(commands=['list'])
-def list_last(message):
-    max_loc = 10 # TODO 10
-    lst = storage.get_last(message, max_loc)
-    if len(lst) == 0:
-        msg = f"Добавленных мест нет!"
-    elif len(lst) == 1:
-        msg = f"Последнее место:"
-    elif len(lst) in (2, 3, 4):
-        msg = f"Последние {len(lst)} места:"
-    else:
-        msg = f"Последние {len(lst)} мест:"
+    @bot.message_handler(commands=['help'])
+    def show_help(message):
+        bot.send_message(chat_id=message.chat.id, text=start_str +
+                         "/start - начать работу\n"
+                         "/add – добавление нового места\n"
+                         "Для ввода местоположения на смартфоне нужно\nнажать вложение к сообщению,\n"
+                         "далее Геопозиция и выбор конкретного места на карте\n"
+                         "/list – отображение добавленных мест\n"
+                         "/reset позволяет пользователю удалить все его добавленные локации(помним про GDPR)\n\n" +
+                         f"Cостояние бота в общении с Вами: {state.get_state_text(message)}\n"
+                         )
 
+    # / add – добавление нового места;
+    @bot.message_handler(commands=['add'])
+    def add_0(message):
+        bot.send_message(chat_id=message.chat.id, text="Введите название места:")
+        state.set_next_state(message)
+        # print("next state:", state.get_state(message))
+        return
 
-    bot.send_message(chat_id=message.chat.id, text=msg)
-    for l in lst:
-        bot.send_message(chat_id=message.chat.id, text=StorageHandler.decode_db_str(l))
-        loc = StorageHandler.location_db_str(l)
+    @bot.message_handler(func=lambda message: state.get_state(message) == StateHandler.ADD_TITLE,
+                         content_types=['text'])
+    def add_1(message):
+        # print("Title:", message.text)
+        title = storage.push_title(message)
+        bot.send_message(chat_id=message.chat.id, text=f"Введите координаты места {title}")
+        state.set_next_state(message)
+        # print("next state:", state.get_state(message))
+        return
+
+    @bot.message_handler(func=lambda message: state.get_state(message) == StateHandler.ADD_ADDRESS,
+                         content_types=['location'])
+    def add_2(message):
+        # print("coordinates:", message.location)
+        loc = storage.push_location(message)
         if loc is not None:
-            # print(loc)
-            bot.send_location(chat_id=message.chat.id, latitude=loc[0], longitude=loc[1])
+            bot.send_message(chat_id=message.chat.id, text=f"{StorageHandler.decode_db_str(loc)} добавлено!")
+            state.set_next_state(message)
+            bot.send_message(chat_id=message.chat.id, text=start_str)
+        else:
+            bot.send_message(chat_id=message.chat.id, text="Невалидные координаты. Введите координаты места:")
+        # print("next state:", state.get_state(message))
+        return
+
+    # /list – отображение добавленных мест;
+    @bot.message_handler(commands=['list'])
+    def list_last(message):
+        max_loc = 10 # TODO 10
+        lst = storage.get_last(message, max_loc)
+        if len(lst) == 0:
+            msg = f"Добавленных мест нет!"
+        elif len(lst) == 1:
+            msg = f"Последнее место:"
+        elif len(lst) in (2, 3, 4):
+            msg = f"Последние {len(lst)} места:"
+        else:
+            msg = f"Последние {len(lst)} мест:"
 
 
-# /reset позволяет пользователю удалить все его добавленные локации(помним про GDPR)
-@bot.message_handler(commands=['reset'])
-def reset(message):
-    storage.reset(message)
-    bot.send_message(chat_id=message.chat.id, text="Все Ваши локации удалены!")
-    state.set_next_state(message, StateHandler.ADD_START)
-    bot.send_message(chat_id=message.chat.id, text=start_str)
-
-@bot.message_handler()
-def handle_message(message):
-    # print(message.text, "state :", state.get_state(message))
-    bot.send_message(chat_id=message.chat.id, text=f'Неизвестная комманда {message.text}')
+        bot.send_message(chat_id=message.chat.id, text=msg)
+        for l in lst:
+            bot.send_message(chat_id=message.chat.id, text=StorageHandler.decode_db_str(l))
+            loc = StorageHandler.location_db_str(l)
+            if loc is not None:
+                # print(loc)
+                bot.send_location(chat_id=message.chat.id, latitude=loc[0], longitude=loc[1])
 
 
-bot.polling()
+    # /reset позволяет пользователю удалить все его добавленные локации(помним про GDPR)
+    @bot.message_handler(commands=['reset'])
+    def reset(message):
+        storage.reset(message)
+        bot.send_message(chat_id=message.chat.id, text="Все Ваши локации удалены!")
+        state.set_next_state(message, StateHandler.ADD_START)
+        bot.send_message(chat_id=message.chat.id, text=start_str)
+
+    @bot.message_handler()
+    def handle_message(message):
+        # print(message.text, "state :", state.get_state(message))
+        bot.send_message(chat_id=message.chat.id, text=f'Неизвестная комманда {message.text}')
+
+
+    bot.polling()
