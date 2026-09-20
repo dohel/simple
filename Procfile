@@ -1,1 +1,1 @@
-worker: python cur_web_3_bot.py
+worker: python source/cur_web_3_bot.py

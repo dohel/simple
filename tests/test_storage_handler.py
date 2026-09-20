@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-import cur_web_3_bot
+import source.cur_web_3_bot as cur_web_3_bot
 
 
 class FakeRedis:

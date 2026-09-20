@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-from cur_web_3_bot import StateHandler
+from source.cur_web_3_bot import StateHandler
 
 
 def _message(chat_id=1):
