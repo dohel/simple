@@ -1,4 +1,26 @@
 # -*- coding: utf-8 -*-
+"""Telegram location bot for collecting and storing user-defined places.
+
+This module implements a simple Telegram chat bot that allows users to add
+named places together with their geographic coordinates. The program manages the
+conversation flow through a small finite-state machine, stores temporary and
+persistent data in Redis, and exposes commands such as /start, /add, /list, and
+/reset to interact with the user.
+
+The bot is designed as a lightweight example of a location-based service: it
+captures a title for a place, waits for a geolocation message from the user,
+serializes the data into a Redis-backed record, then retrieves and displays saved
+places when requested. Each Telegram chat is tracked independently, making it
+possible to keep separate location histories for different users.
+
+Key responsibilities of this module:
+- define the bot's conversational state transitions,
+- serialize and deserialize saved place entries,
+- store the user's data in Redis by chat ID,
+- register Telegram command and message handlers,
+- send replies, location payloads, and help text to the user,
+- run the polling loop that keeps the bot active.
+"""
 from collections import defaultdict
 import os
 import redis
