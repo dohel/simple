@@ -182,7 +182,7 @@ def test_run_list_last_handles_empty_list(monkeypatch):
     assert any("Добавленных мест нет!" in msg["text"] for msg in bot.sent_messages)
 
 
-def test_run_list_last_handles_many_items(monkeypatch):
+def test_run_list_last_handles_two_to_four_items(monkeypatch):
     fake_redis = _install_fake_redis(monkeypatch)
     bot = MockTeleBot()
     run(bot)
@@ -190,6 +190,24 @@ def test_run_list_last_handles_many_items(monkeypatch):
     list_handler = _handler_by_name(bot, "list_last")
     message = _make_message(chat_id=31)
     fake_redis.data[31] = [
+        "A&#94;1.0&#94;2.0",
+        "B&#94;1.1&#94;2.1",
+    ]
+
+    list_handler(message)
+
+    assert any("Последние 2 места:" in msg["text"] for msg in bot.sent_messages)
+    assert len(bot.sent_locations) == 2
+
+
+def test_run_list_last_handles_many_items(monkeypatch):
+    fake_redis = _install_fake_redis(monkeypatch)
+    bot = MockTeleBot()
+    run(bot)
+
+    list_handler = _handler_by_name(bot, "list_last")
+    message = _make_message(chat_id=32)
+    fake_redis.data[32] = [
         "A&#94;1.0&#94;2.0",
         "B&#94;1.1&#94;2.1",
         "C&#94;1.2&#94;2.2",

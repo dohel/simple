@@ -76,6 +76,13 @@ def test_storage_handler_location_db_str_returns_none_for_invalid_entry(monkeypa
     assert handler.location_db_str("not-a-valid-entry") is None
 
 
+def test_storage_handler_location_db_str_returns_none_for_malformed_entry(monkeypatch):
+    handler = _build_storage_handler(monkeypatch)
+    malformed = f"Central Park{cur_web_3_bot.StorageHandler.sep}40.78"
+
+    assert handler.location_db_str(malformed) is None
+
+
 def test_storage_handler_push_title_stores_title(monkeypatch):
     handler = _build_storage_handler(monkeypatch)
     message = _message(chat_id=7, text="Museum")

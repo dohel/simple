@@ -521,7 +521,17 @@ def get_token():
     return bot_token
 
 
-if __name__ == "__main__":
+def runner():
+    """Create the bot using the configured token and start the polling loop.
+
+    Returns:
+        None. This function validates the Telegram token, constructs the bot
+        instance, and invokes run(bot) so the application starts in the same way
+        it did under the old __main__ guard.
+
+    Raises:
+        SystemExit: If the required environment variable is not set.
+    """
     token = get_token()
     if not token:
         print(f"ENV VAR {TOKEN_ENV_VAR} is not set")
@@ -529,3 +539,7 @@ if __name__ == "__main__":
 
     bot = telebot.TeleBot(token)
     run(bot)
+
+
+if __name__ == "__main__":  # pragma: no cover - entrypoint may be excluded from test coverage
+    runner()
