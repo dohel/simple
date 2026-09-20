@@ -29,6 +29,30 @@ import telebot
 
 
 class StateHandler:
+    """Manage the conversational workflow for each Telegram chat.
+
+    Purpose:
+        This class keeps track of the current step in a multi-step interaction,
+        allowing the bot to know whether it is waiting for a place name, a
+        location, or for the user to begin a new session.
+
+    Relationship with other classes:
+        StateHandler is a collaborator of the bot module's command handlers. It
+        is not a subclass of any other class and does not inherit from StorageHandler.
+        Instead, it is used via association: the bot callbacks call
+        set_next_state(), get_state(), and get_state_text() to update or read the
+        current workflow state for a specific chat ID.
+
+        It also has a close structural relationship with StorageHandler because the
+        bot moves from one step to another while storing the intermediate title in
+        Redis before the location data is collected. This is a logical association,
+        not inheritance or composition in the strict OOP sense.
+
+    OOD/OOP relation type:
+        Association. The class is a service object that stores state information
+        for one or more Telegram chats and is invoked by other code without owning
+        its collaborators.
+    """
     MAX_STATE = 3
     ADD_START, ADD_TITLE, ADD_ADDRESS = range(MAX_STATE)
     TEXT = {ADD_START: "Начало работы", ADD_TITLE: "Ввод названия места", ADD_ADDRESS: "Ввод местоположения"}
@@ -92,6 +116,31 @@ class StateHandler:
 
 
 class StorageHandler:
+    """Persist user-entered places in Redis and convert them to/from a stored format.
+
+    Purpose:
+        This class is responsible for storing a user's temporary title and final
+        location records in Redis. It also formats those records for display in
+        Telegram messages and extracts coordinate pairs when needed.
+
+    Relationship with other classes:
+        StorageHandler is used by the bot callbacks that handle /add, /list, and
+        /reset. In OOP terms, it is a collaborator of the Telegram bot logic and is
+        associated with StateHandler through the overall conversation flow: the user
+        first enters a title, then the bot asks for a location, and finally the
+        stored data is retrieved and displayed.
+
+        The class owns and manages a Redis connection object as an instance
+        attribute (self.r). This means the relationship is partially composite in
+        the sense that the StorageHandler instance is responsible for creating and
+        controlling the lifecycle of its Redis client, though the Redis service is
+        external to the application and not a subclass relationship.
+
+    OOD/OOP relation type:
+        Composition/association hybrid. The class composes an internal Redis client
+        connection object and is also associated with the bot logic through method
+        calls such as push_title(), push_location(), and get_last().
+    """
     sep = "&#94"
 
     def __init__(self):
