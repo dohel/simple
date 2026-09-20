@@ -34,15 +34,60 @@ class StateHandler:
     TEXT = {ADD_START: "Начало работы", ADD_TITLE: "Ввод названия места", ADD_ADDRESS: "Ввод местоположения"}
 
     def __init__(self):
+        """Create a new state tracker for Telegram chat sessions.
+
+        Parameters:
+            None.
+
+        Returns:
+            None. Initializes the internal USER_STATE dictionary used to remember
+            the current step for each chat ID.
+
+        Notes:
+            This method mutates the instance by creating a defaultdict that stores
+            state values per chat identifier. The default state is ADD_ADDRESS.
+        """
         self.USER_STATE = defaultdict(lambda: StateHandler.ADD_ADDRESS)
 
     def set_next_state(self, message, ns=None):
+        """Advance or explicitly set the current conversation state for a chat.
+
+        Parameters:
+            message: Telegram message object whose chat.id identifies the user.
+            ns: Optional integer state value to assign directly. If omitted, the
+                next state is computed by advancing one step modulo MAX_STATE.
+
+        Returns:
+            None. This function updates the internal USER_STATE dictionary in place.
+
+        Notes:
+            This method mutates the passed-in state storage for the current chat by
+            reference via self.USER_STATE[message.chat.id].
+        """
         self.USER_STATE[message.chat.id] = (self.get_state(message) + 1) % StateHandler.MAX_STATE if ns is None else ns
 
     def get_state(self, message):
+        """Return the current state for the given Telegram chat.
+
+        Parameters:
+            message: Telegram message object containing chat.id.
+
+        Returns:
+            int: The current conversation state for the chat. The returned value is
+            read from the instance state map and is not modified.
+        """
         return self.USER_STATE[message.chat.id]
 
     def get_state_text(self, message):
+        """Get a human-readable label for the current state.
+
+        Parameters:
+            message: Telegram message object used to determine the current state.
+
+        Returns:
+            str: A descriptive label for the state, such as "Начало работы" or
+            "Ввод названия места".
+        """
         return StateHandler.TEXT[self.USER_STATE[message.chat.id]]
 
 
@@ -50,21 +95,71 @@ class StorageHandler:
     sep = "&#94"
 
     def __init__(self):
+        """Initialize the Redis-backed storage used to save user locations.
+
+        Parameters:
+            None.
+
+        Returns:
+            None. Creates a Redis client instance attached to self.r.
+
+        Notes:
+            This method mutates the StorageHandler instance by assigning a live Redis
+            connection object to self.r. The connection uses the REDIS_URL variable
+            when present and falls back to a localhost Redis instance.
+        """
         self.r = redis.from_url(os.getenv('REDIS_URL', 'redis://localhost:6379'), db=0, decode_responses=True)
 
     @staticmethod
     def encode_db_str(message, title):
-        """converts location and title to a string to store in db"""
+        """Convert a Telegram location and its title into a single stored string.
+
+        Parameters:
+            message: Telegram message object that contains the user's location
+                payload with latitude and longitude attributes.
+            title: str: The human-readable place name previously entered by the user.
+
+        Returns:
+            str: A serialized value in the form "title{sep}latitude{sep}longitude".
+
+        Notes:
+            This function does not mutate its inputs; it returns a new string built
+            from the provided values.
+        """
         return f'{title}{StorageHandler.sep}{message.location.latitude}{StorageHandler.sep}{message.location.longitude}'
 
     @staticmethod
     def decode_db_str(entry):
-        """converts string from db to a readable string"""
+        """Convert a stored database string into a user-friendly description.
+
+        Parameters:
+            entry: str: Serialized place data stored in Redis.
+
+        Returns:
+            str: A readable message showing the title and coordinates, or only the
+            title when the entry has no coordinate data.
+
+        Notes:
+            This function does not mutate the input string; it produces a new
+            formatted string for display in Telegram.
+        """
         return "Название: '{}', координаты: '{}, {}'".format(*entry.split(StorageHandler.sep)) if StorageHandler.sep in entry else "Название: {}".format(entry)
 
     @staticmethod
     def location_db_str(entry):
-        """converts string from db to a location dictionary"""
+        """Extract latitude and longitude from a serialized location entry.
+
+        Parameters:
+            entry: str: A stored value containing title and coordinate data.
+
+        Returns:
+            tuple | None: A two-item tuple of (latitude, longitude) when the entry
+            is valid, otherwise None.
+
+        Notes:
+            This function does not modify the given string; it only parses and
+            returns a new tuple structure.
+        """
         if StorageHandler.sep not in entry:
             return None
         lst = entry.split(StorageHandler.sep)
@@ -74,12 +169,41 @@ class StorageHandler:
         return lst[1], lst[2]
 
     def push_title(self, message):
+        """Store a place title in Redis and return it to the calling code.
+
+        Parameters:
+            message: Telegram message object whose text contains the location title.
+
+        Returns:
+            str: The title text that was saved.
+
+        Notes:
+            This function mutates the Redis list for the current chat by pushing and
+            then re-pushing the title. It also consumes and re-queues the value to
+            preserve the expected temporary sequence used later when coordinates are
+            attached.
+        """
         self.r.lpush(message.chat.id, message.text)
         g = self.r.lpop(message.chat.id)
         self.r.lpush(message.chat.id, message.text)
         return message.text
 
     def push_location(self, message):
+        """Save the user's coordinate payload together with the previously stored title.
+
+        Parameters:
+            message: Telegram message object that contains a location with latitude
+                and longitude attributes.
+
+        Returns:
+            str | None: A serialized location string if the location is valid,
+            otherwise None.
+
+        Notes:
+            This function mutates Redis state for the current chat by removing the
+            saved title placeholder, combining it with coordinates, and pushing the
+            final serialized record back into the list.
+        """
         if message.location is not None:
             title = self.r.lpop(message.chat.id)
             full_location_data = StorageHandler.encode_db_str(message, title)
@@ -89,10 +213,37 @@ class StorageHandler:
             return None
 
     def reset(self, message):
+        """Delete all stored location entries for the current Telegram chat.
+
+        Parameters:
+            message: Telegram message object whose chat.id identifies the user data
+                to clear.
+
+        Returns:
+            None.
+
+        Notes:
+            This function mutates the Redis list in place by repeatedly removing all
+            entries for the given chat until the list is empty.
+        """
         while self.r.llen(message.chat.id) > 0:
             self.r.lpop(message.chat.id)
 
     def get_last(self, message, num):
+        """Retrieve the most recent saved location entries for a chat.
+
+        Parameters:
+            message: Telegram message object used to identify the target chat.
+            num: int: Maximum number of entries to return, ordered from newest to
+                oldest according to Redis list semantics.
+
+        Returns:
+            list[str]: A list of serialized location records for the newest entries.
+
+        Notes:
+            This function does not mutate Redis. It reads data from the current chat's
+            list and returns a new Python list containing the matching entries.
+        """
         last_locations = self.r.lrange(message.chat.id, 0, num - 1)
         result = [entry for entry in last_locations]
         return result
@@ -114,12 +265,37 @@ if __name__ == "__main__":
 
     @bot.message_handler(commands=['start'])
     def start(message):
+        """Start the bot interaction and reset the user's state to the initial step.
+
+        Parameters:
+            message: Telegram message object received when the user sends /start.
+
+        Returns:
+            None. This function sends a welcome/help message to the chat and updates
+            the internal conversation state.
+
+        Notes:
+            This function mutates the shared state tracker by calling set_next_state,
+            which changes the stored state for this chat in place.
+        """
         # print("ID: ", message.chat.id)
         state.set_next_state(message, StateHandler.ADD_START)
         bot.send_message(chat_id=message.chat.id, text=start_str)
 
     @bot.message_handler(commands=['help'])
     def show_help(message):
+        """Send the bot usage instructions and current state to the user.
+
+        Parameters:
+            message: Telegram message object that triggered the /help command.
+
+        Returns:
+            None. The function sends a formatted help text to the chat.
+
+        Notes:
+            This function does not mutate input data. It reads state via
+            state.get_state_text(message) and sends a response.
+        """
         bot.send_message(chat_id=message.chat.id, text=start_str +
                          "/start - начать работу\n"
                          "/add – добавление нового места\n"
@@ -133,6 +309,19 @@ if __name__ == "__main__":
     # / add – добавление нового места;
     @bot.message_handler(commands=['add'])
     def add_0(message):
+        """Begin the process of adding a new place by requesting its name.
+
+        Parameters:
+            message: Telegram message object received after the user sends /add.
+
+        Returns:
+            None. The bot asks the user to enter the place title and advances the
+            state machine to the title-entry phase.
+
+        Notes:
+            This function mutates the current chat state by calling set_next_state,
+            which updates the state dictionary in place.
+        """
         bot.send_message(chat_id=message.chat.id, text="Введите название места:")
         state.set_next_state(message)
         # print("next state:", state.get_state(message))
@@ -141,6 +330,20 @@ if __name__ == "__main__":
     @bot.message_handler(func=lambda message: state.get_state(message) == StateHandler.ADD_TITLE,
                          content_types=['text'])
     def add_1(message):
+        """Accept a place title, save it temporarily, and ask for the location.
+
+        Parameters:
+            message: Telegram message object containing the entered place title.
+
+        Returns:
+            None. The function saves the title in Redis and sends a follow-up prompt
+            asking for the geolocation.
+
+        Notes:
+            This function mutates both Redis storage and the chat's state: the title
+            is stored via storage.push_title(message), and the state is advanced in
+            place by set_next_state.
+        """
         # print("Title:", message.text)
         title = storage.push_title(message)
         bot.send_message(chat_id=message.chat.id, text=f"Введите координаты места {title}")
@@ -151,6 +354,21 @@ if __name__ == "__main__":
     @bot.message_handler(func=lambda message: state.get_state(message) == StateHandler.ADD_ADDRESS,
                          content_types=['location'])
     def add_2(message):
+        """Store a geolocation tied to the previously saved place title.
+
+        Parameters:
+            message: Telegram message object containing a location payload with
+                latitude and longitude.
+
+        Returns:
+            None. The function sends a success message when the location is saved,
+            otherwise asks the user to retry with a valid location.
+
+        Notes:
+            This function mutates Redis state when a valid location is present by
+            calling storage.push_location(message), and it also updates the chat's
+            state in place.
+        """
         # print("coordinates:", message.location)
         loc = storage.push_location(message)
         if loc is not None:
@@ -165,6 +383,20 @@ if __name__ == "__main__":
     # /list – отображение добавленных мест;
     @bot.message_handler(commands=['list'])
     def list_last(message):
+        """Display up to the most recent saved locations for the current user.
+
+        Parameters:
+            message: Telegram message object that identifies the chat whose saved
+                places should be shown.
+
+        Returns:
+            None. The function sends a summary message and then each saved place as a
+            human-readable text plus map coordinates when available.
+
+        Notes:
+            This function does not mutate persisted data. It reads from Redis via
+            storage.get_last(message, max_loc) and sends responses to the user.
+        """
         max_loc = 10 # TODO 10
         lst = storage.get_last(message, max_loc)
         if len(lst) == 0:
@@ -189,6 +421,21 @@ if __name__ == "__main__":
     # /reset позволяет пользователю удалить все его добавленные локации(помним про GDPR)
     @bot.message_handler(commands=['reset'])
     def reset(message):
+        """Delete every saved place for the current user and reset the conversation state.
+
+        Parameters:
+            message: Telegram message object whose chat.id identifies the user data
+                to clear.
+
+        Returns:
+            None. The function confirms the cleanup and resets the bot back to the
+            initial state.
+
+        Notes:
+            This function mutates the attached Redis storage in place by clearing all
+            entries for the current chat. It also updates the state dictionary for the
+            chat via state.set_next_state.
+        """
         storage.reset(message)
         bot.send_message(chat_id=message.chat.id, text="Все Ваши локации удалены!")
         state.set_next_state(message, StateHandler.ADD_START)
@@ -196,6 +443,19 @@ if __name__ == "__main__":
 
     @bot.message_handler()
     def handle_message(message):
+        """Handle any message that does not match a known command or workflow step.
+
+        Parameters:
+            message: Telegram message object representing an unrecognized user input.
+
+        Returns:
+            None. The function responds with a message indicating that the command is
+            unknown.
+
+        Notes:
+            This helper does not mutate the message object or the bot state; it only
+            sends a reply to the user.
+        """
         # print(message.text, "state :", state.get_state(message))
         bot.send_message(chat_id=message.chat.id, text=f'Неизвестная комманда {message.text}')
 
