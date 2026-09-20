@@ -298,16 +298,23 @@ class StorageHandler:
         return result
 
 
-if __name__ == "__main__":
-    token_env_var = 'COURSERA_PY_WEB_3_LOCATION_BOT_TOKEN'
-    bot_token = os.getenv(token_env_var)
-    if not bot_token:
-        print(f"ENV VAR {token_env_var} is not set")
-        exit(-1)
+def run(bot):
+    """Configure and start the Telegram bot's command handlers and polling loop.
 
-    bot = telebot.TeleBot(bot_token)
+    Parameters:
+        bot: telebot.TeleBot: A configured Telegram bot instance created by the
+            caller, typically from a bot token in the environment.
+
+    Returns:
+        None. This function initializes the bot's state and storage, registers all
+        handlers, and starts polling for incoming messages.
+
+    Notes:
+        This function sets up the bot's runtime state and mutates the given bot
+        instance by registering handlers. It does not return a value; it starts the
+        interaction loop for the bot.
+    """
     state = StateHandler()
-
     storage = StorageHandler()
 
     start_str = "Location bot, базовый вариант. Добавление мест в 2 этапа - название, потом геолокация.\n""/help  - напечатать подсказки\n"
@@ -327,7 +334,6 @@ if __name__ == "__main__":
             This function mutates the shared state tracker by calling set_next_state,
             which changes the stored state for this chat in place.
         """
-        # print("ID: ", message.chat.id)
         state.set_next_state(message, StateHandler.ADD_START)
         bot.send_message(chat_id=message.chat.id, text=start_str)
 
@@ -355,7 +361,6 @@ if __name__ == "__main__":
                          f"Cостояние бота в общении с Вами: {state.get_state_text(message)}\n"
                          )
 
-    # / add – добавление нового места;
     @bot.message_handler(commands=['add'])
     def add_0(message):
         """Begin the process of adding a new place by requesting its name.
@@ -373,7 +378,6 @@ if __name__ == "__main__":
         """
         bot.send_message(chat_id=message.chat.id, text="Введите название места:")
         state.set_next_state(message)
-        # print("next state:", state.get_state(message))
         return
 
     @bot.message_handler(func=lambda message: state.get_state(message) == StateHandler.ADD_TITLE,
@@ -393,11 +397,9 @@ if __name__ == "__main__":
             is stored via storage.push_title(message), and the state is advanced in
             place by set_next_state.
         """
-        # print("Title:", message.text)
         title = storage.push_title(message)
         bot.send_message(chat_id=message.chat.id, text=f"Введите координаты места {title}")
         state.set_next_state(message)
-        # print("next state:", state.get_state(message))
         return
 
     @bot.message_handler(func=lambda message: state.get_state(message) == StateHandler.ADD_ADDRESS,
@@ -418,7 +420,6 @@ if __name__ == "__main__":
             calling storage.push_location(message), and it also updates the chat's
             state in place.
         """
-        # print("coordinates:", message.location)
         loc = storage.push_location(message)
         if loc is not None:
             bot.send_message(chat_id=message.chat.id, text=f"{StorageHandler.decode_db_str(loc)} добавлено!")
@@ -426,10 +427,8 @@ if __name__ == "__main__":
             bot.send_message(chat_id=message.chat.id, text=start_str)
         else:
             bot.send_message(chat_id=message.chat.id, text="Невалидные координаты. Введите координаты места:")
-        # print("next state:", state.get_state(message))
         return
 
-    # /list – отображение добавленных мест;
     @bot.message_handler(commands=['list'])
     def list_last(message):
         """Display up to the most recent saved locations for the current user.
@@ -446,7 +445,7 @@ if __name__ == "__main__":
             This function does not mutate persisted data. It reads from Redis via
             storage.get_last(message, max_loc) and sends responses to the user.
         """
-        max_loc = 10 # TODO 10
+        max_loc = 10
         lst = storage.get_last(message, max_loc)
         if len(lst) == 0:
             msg = f"Добавленных мест нет!"
@@ -457,17 +456,13 @@ if __name__ == "__main__":
         else:
             msg = f"Последние {len(lst)} мест:"
 
-
         bot.send_message(chat_id=message.chat.id, text=msg)
-        for l in lst:
-            bot.send_message(chat_id=message.chat.id, text=StorageHandler.decode_db_str(l))
-            loc = StorageHandler.location_db_str(l)
+        for loc_entry in lst:
+            bot.send_message(chat_id=message.chat.id, text=StorageHandler.decode_db_str(loc_entry))
+            loc = StorageHandler.location_db_str(loc_entry)
             if loc is not None:
-                # print(loc)
                 bot.send_location(chat_id=message.chat.id, latitude=loc[0], longitude=loc[1])
 
-
-    # /reset позволяет пользователю удалить все его добавленные локации(помним про GDPR)
     @bot.message_handler(commands=['reset'])
     def reset(message):
         """Delete every saved place for the current user and reset the conversation state.
@@ -505,8 +500,17 @@ if __name__ == "__main__":
             This helper does not mutate the message object or the bot state; it only
             sends a reply to the user.
         """
-        # print(message.text, "state :", state.get_state(message))
         bot.send_message(chat_id=message.chat.id, text=f'Неизвестная комманда {message.text}')
 
-
     bot.polling()
+
+
+if __name__ == "__main__":
+    token_env_var = 'COURSERA_PY_WEB_3_LOCATION_BOT_TOKEN'
+    bot_token = os.getenv(token_env_var)
+    if not bot_token:
+        print(f"ENV VAR {token_env_var} is not set")
+        exit(-1)
+
+    bot = telebot.TeleBot(bot_token)
+    run(bot)
