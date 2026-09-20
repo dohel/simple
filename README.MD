@@ -74,6 +74,15 @@ Redis is configured through:
    python cur_web_3_bot.py
    ```
 
+5. Tests 
+   ```bash
+   pytest --cov=source --cov-report=term-missing --cov-report=term ./tests/ -q
+   ```
+   ```bash
+    python -m pytest ./tests/ -q
+   ```
+
+
 ## Deployment
 
 The project includes a `Procfile` for deploying the bot as a worker process:
