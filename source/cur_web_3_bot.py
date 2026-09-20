@@ -505,12 +505,27 @@ def run(bot):
     bot.polling()
 
 
-if __name__ == "__main__":
-    token_env_var = 'COURSERA_PY_WEB_3_LOCATION_BOT_TOKEN'
-    bot_token = os.getenv(token_env_var)
-    if not bot_token:
-        print(f"ENV VAR {token_env_var} is not set")
-        exit(-1)
+TOKEN_ENV_VAR = 'COURSERA_PY_WEB_3_LOCATION_BOT_TOKEN'
 
-    bot = telebot.TeleBot(bot_token)
+
+def get_token():
+    """Retrieve the Telegram bot token from the environment.
+
+    Returns:
+        str | None: The bot token string used to authenticate with the Telegram
+        API when configured, otherwise None.
+    """
+    bot_token = os.getenv(TOKEN_ENV_VAR)
+    if not bot_token:
+        return None
+    return bot_token
+
+
+if __name__ == "__main__":
+    token = get_token()
+    if not token:
+        print(f"ENV VAR {TOKEN_ENV_VAR} is not set")
+        raise SystemExit(1)
+
+    bot = telebot.TeleBot(token)
     run(bot)
